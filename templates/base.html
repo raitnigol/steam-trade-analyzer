@@ -28,6 +28,17 @@
         margin-bottom: 12px;
         border-radius: 8px;
       }
+
+      /* Steam-like "protected items" emphasis */
+      .steam-protected-flash {
+        background: #3b2b00;
+        border-color: #fbbf24;
+        color: #fde68a;
+      }
+
+      .steam-protected-flash a {
+        color: #fde68a;
+      }
       .muted {
         color: #94a3b8;
       }
@@ -86,6 +97,28 @@
       ul.items {
         margin: 8px 0 0;
         padding-left: 18px;
+      }
+
+      /* Responsive filter/search form */
+      .filters-form {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .filters-form label {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .field-page {
+        width: 90px;
+      }
+
+      .field-search {
+        width: 320px;
       }
 
       .items-grid {
@@ -217,16 +250,24 @@
         height: 36px;
         border-radius: 999px;
         object-fit: cover;
-        border: 1px solid #334155;
+        border: 2px solid #334155;
         margin-right: 10px;
         vertical-align: middle;
+      }
+
+      .partner-avatar-link {
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
+        color: inherit;
+        cursor: pointer;
       }
 
       .partner-avatar-placeholder {
         width: 36px;
         height: 36px;
         border-radius: 999px;
-        border: 1px dashed #334155;
+        border: 2px dashed #334155;
         margin-right: 10px;
         vertical-align: middle;
         background: #0f172a;
@@ -237,6 +278,56 @@
         font-size: 12px;
         font-weight: 600;
         user-select: none;
+      }
+
+      .partner-avatar-link:hover .partner-avatar,
+      .partner-avatar-link:hover .partner-avatar-placeholder {
+        border-color: #7dd3fc;
+      }
+
+      @media (max-width: 640px) {
+        .row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .trade-title {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .filters-form {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .filters-form label {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .field-page,
+        .field-search {
+          width: 100%;
+        }
+
+        button,
+        button.secondary {
+          width: 100%;
+        }
+
+        .items-grid {
+          gap: 8px;
+        }
+
+        .item-card {
+          min-width: 0;
+          width: 100%;
+        }
+
+        .item-img {
+          margin-bottom: 6px;
+        }
       }
 
       .error {

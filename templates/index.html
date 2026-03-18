@@ -6,6 +6,15 @@
     <div class="error">{{ error }}</div>
   {% endif %}
 
+  {% if protected_trades_count and protected_trades_count > 0 and page_num == 1 %}
+    <div class="flash steam-protected-flash">
+      You have {{ protected_trades_count }} recent trades with protected items.
+      Don't recognize a trade?
+      <a href="{{ protection_help_url }}" target="_blank" rel="noreferrer">Click here</a>
+      to recover your account and eligible items.
+    </div>
+  {% endif %}
+
   <div class="row">
     <div class="muted">
       {{ summary_text }}
@@ -19,14 +28,14 @@
   </div>
 
   <div class="row" style="margin: 14px 0;">
-    <form method="get" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+    <form method="get" class="filters-form">
       <label>
         Page:
-        <input name="page" value="{{ page_num }}" style="width: 90px;" />
+        <input class="field-page" name="page" value="{{ page_num }}" />
       </label>
       <label>
         Search:
-        <input name="q" value="{{ q }}" placeholder="partner, item name, event..." style="width: 320px;" />
+        <input class="field-search" name="q" value="{{ q }}" placeholder="partner, item name, event..." />
       </label>
       <label>
         Direction:
@@ -82,6 +91,16 @@
         {% if t.partner_name %}
           <div class="muted" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             {% if t.partner_avatar_profile_path or t.partner_steamid64 %}
+              {% if t.partner_url %}
+                <a
+                  class="partner-avatar-link"
+                  href="{{ t.partner_url }}"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open Steam profile for {{ t.partner_name }}"
+                >
+              {% endif %}
+
               <div class="partner-avatar-placeholder" id="avatar-ph-{{ t.trade_row_index }}">
                 {{ t.partner_name[:1] if t.partner_name else '?' }}
               </div>
@@ -93,18 +112,15 @@
                 onload="document.getElementById('avatar-ph-{{ t.trade_row_index }}').style.display='none';"
                 onerror="document.getElementById('avatar-ph-{{ t.trade_row_index }}').style.display='flex'; this.style.display='none';"
               />
+
+              {% if t.partner_url %}
+                </a>
+              {% endif %}
             {% endif %}
             <span>with {{ t.partner_name }}</span>
           </div>
         {% endif %}
-        {% if t.partner_miniprofile %}
-          <div class="muted">mini: {{ t.partner_miniprofile }}</div>
-        {% endif %}
-        {% if t.partner_url %}
-          <div class="muted">
-            <a href="{{ t.partner_url }}" target="_blank" rel="noreferrer">profile</a>
-          </div>
-        {% endif %}
+        {# Profile link is redundant because avatar is already wrapped in a clickable link #}
       </div>
 
       {% if t.trade_protected %}

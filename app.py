@@ -89,6 +89,53 @@ def trade_to_haystack(trade: Dict[str, Any]) -> str:
     return " ".join(parts).lower()
 
 
+_PROTECTION_STATS_CACHE: Dict[str, Any] = {"latest_mtime": None}
+
+
+def compute_protection_stats_across_cached_pages() -> Dict[str, int]:
+    """
+    Counts "trade_protected" trades across all cached `page-*.parsed.json`.
+
+    This is a prototype helper for a Steam-like banner message:
+      "You have X recent trades with protected items..."
+    """
+    global _PROTECTION_STATS_CACHE
+
+    parsed_paths = sorted(ROOT_DIR.glob("page-*.parsed.json"))
+    latest_mtime = max((p.stat().st_mtime for p in parsed_paths), default=0)
+
+    if _PROTECTION_STATS_CACHE.get("latest_mtime") == latest_mtime:
+        return {
+            "protected_trades_count": int(_PROTECTION_STATS_CACHE.get("protected_trades_count", 0)),
+            "total_trades_count": int(_PROTECTION_STATS_CACHE.get("total_trades_count", 0)),
+        }
+
+    protected_trades_count = 0
+    total_trades_count = 0
+
+    for path in parsed_paths:
+        try:
+            data = jsonlib.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        for t in data.get("trades") or []:
+            total_trades_count += 1
+            if t.get("trade_protected"):
+                protected_trades_count += 1
+
+    _PROTECTION_STATS_CACHE = {
+        "latest_mtime": latest_mtime,
+        "protected_trades_count": protected_trades_count,
+        "total_trades_count": total_trades_count,
+    }
+
+    return {
+        "protected_trades_count": protected_trades_count,
+        "total_trades_count": total_trades_count,
+    }
+
+
 @app.route("/", methods=["GET"])
 def index() -> str:
     page_num = int(request.args.get("page", "1"))
@@ -131,6 +178,7 @@ def index() -> str:
                 all_app_ids.add(str(x))
 
     page_meta = parsed.get("page") or {}
+    protection_stats = compute_protection_stats_across_cached_pages()
     return render_template(
         "index.html",
         trades=filtered,
@@ -144,6 +192,8 @@ def index() -> str:
         summary_text=page_meta.get("summary_text", ""),
         cursor_href=page_meta.get("cursor_href"),
         all_app_ids=sorted(all_app_ids),
+        protected_trades_count=protection_stats.get("protected_trades_count", 0),
+        protection_help_url="https://help.steampowered.com/wizard/HelpTradeRestore",
     )
 
 
