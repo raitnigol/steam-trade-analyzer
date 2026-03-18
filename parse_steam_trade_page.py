@@ -95,6 +95,62 @@ def infer_app_id_from_item_name(item_name: str) -> str:
     return ""
 
 
+def infer_rarity_from_name_color(name_color: str) -> str:
+    """
+    Steam uses a small set of color values to reflect weapon skin quality/rarity.
+    We map the observed `item_name_color` values to human-readable grade names.
+
+    Note: This is a prototype heuristic; if Steam introduces new palettes, those
+    items will fall back to empty rarity.
+    """
+    c = (name_color or "").lower().strip()
+    # Common CS2 quality palette (best-effort mapping based on observed values in page-1.html).
+    # Gold (`#e4ae39`) is handled later using the item name (★ vs non-★).
+    if c == "#b0c3d9":
+        return "Consumer Grade"
+    if c == "#5e98d9":
+        return "Industrial Grade"
+    if c == "#4b69ff":
+        return "Mil-Spec Grade"
+    if c == "#8847ff":
+        return "Restricted Grade"
+    if c == "#d32ce6":
+        return "Classified Grade"
+    if c == "#eb4b4b":
+        return "Covert Grade"
+    if c == "#e4ae39":
+        return "Gold Grade"
+    return ""
+
+
+def classify_gold_rarity(item_name: str) -> tuple[str, str]:
+    """
+    Gold color is used for multiple special buckets.
+    Distinguish using name markers.
+    """
+    n = item_name or ""
+    is_rare_special = ("★" in n) or ("Knife" in n) or ("Glove" in n)
+    if is_rare_special:
+        return "★ Rare Special Item", "rare-special"
+    return "Contraband", "contraband"
+
+
+def rarity_class_from_label(rarity_label: str) -> str:
+    """
+    Map displayed rarity text to a stable CSS class.
+    """
+    mapping = {
+        "Consumer Grade": "consumer",
+        "Industrial Grade": "industrial",
+        "Mil-Spec Grade": "milspec",
+        "Restricted Grade": "restricted",
+        "Classified Grade": "classified",
+        "Covert Grade": "covert",
+        "Gold Grade": "gold",
+    }
+    return mapping.get(rarity_label, "unknown" if rarity_label else "")
+
+
 def detect_item_app_id(item_url: str, item_name: str) -> str:
     return extract_app_id_from_item_url(item_url) or infer_app_id_from_item_name(item_name)
 
@@ -146,6 +202,83 @@ def extract_history_inventory_icon_lookup(html: str) -> Dict[Tuple[str, str], st
                 lookup.setdefault(key, str(icon_url))
 
     return lookup
+
+
+def extract_history_inventory_wear_lookup(html: str) -> Dict[Tuple[str, str], str]:
+    """
+    Steam embeds a JS object `g_rgHistoryInventory` in the trade-history HTML.
+
+    For wearable skins, item details include `descriptions` entries such as:
+      { "name": "exterior_wear", "value": "Exterior: Factory New" }
+
+    Returns a lookup:
+      (appid, item_name) -> wear_label
+    """
+    m = re.search(r"var\s+g_rgHistoryInventory\s*=\s*(\{.*?\})\s*;", html, flags=re.S)
+    if not m:
+        return {}
+
+    try:
+        inv = json.loads(m.group(1))
+    except Exception:
+        return {}
+
+    wear_lookup: Dict[Tuple[str, str], str] = {}
+    if not isinstance(inv, dict):
+        return wear_lookup
+
+    # Small helper to strip HTML tags from values.
+    def _strip_html(value: str) -> str:
+        # Remove tags, then normalize whitespace.
+        no_tags = re.sub(r"<[^>]+>", "", value)
+        no_tags = re.sub(r"\s+", " ", no_tags).strip()
+        return no_tags
+
+    for appid, ctxs in inv.items():
+        if not isinstance(ctxs, dict):
+            continue
+        appid_s = str(appid)
+
+        for _contextid, assets in ctxs.items():
+            if not isinstance(assets, dict):
+                continue
+            for _assetid, details in assets.items():
+                if not isinstance(details, dict):
+                    continue
+
+                item_name = details.get("name") or ""
+                if not item_name:
+                    continue
+
+                descriptions = details.get("descriptions") or []
+                if not isinstance(descriptions, list):
+                    continue
+
+                wear_label = ""
+                for d in descriptions:
+                    if not isinstance(d, dict):
+                        continue
+                    desc_name = (d.get("name") or "").strip()
+                    if desc_name not in {"exterior_wear", "wear"}:
+                        continue
+
+                    value = d.get("value") or ""
+                    if not isinstance(value, str):
+                        continue
+
+                    plain = _strip_html(value)
+                    # Example: "Exterior: Factory New"
+                    m_wear = re.search(r"Exterior:\s*(.+)$", plain, flags=re.IGNORECASE)
+                    if m_wear:
+                        wear_label = m_wear.group(1).strip()
+                    else:
+                        wear_label = plain.strip()
+                    break
+
+                if wear_label:
+                    wear_lookup[(appid_s, str(item_name))] = wear_label
+
+    return wear_lookup
 
 
 def find_main_contents(soup: BeautifulSoup) -> Tag:
@@ -291,7 +424,9 @@ def extract_direction(content: Tag) -> Dict[str, Any]:
 
 
 def extract_items(
-    content: Tag, icon_lookup: Dict[Tuple[str, str], str]
+    content: Tag,
+    icon_lookup: Dict[Tuple[str, str], str],
+    wear_lookup: Dict[Tuple[str, str], str],
 ) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     items_group_wrappers = content.find_all("div", class_="tradehistory_items_group")
@@ -313,6 +448,8 @@ def extract_items(
             border_color = img_style.get("border-color", "") or node_style.get("border-color", "")
             background_color = img_style.get("background-color", "") or node_style.get("background-color", "")
             name_color = name_style.get("color", "")
+            rarity_label = infer_rarity_from_name_color(name_color)
+            rarity_class = rarity_class_from_label(rarity_label)
 
             item_url = node.get("href", "") if node.name == "a" else ""
             app_id = detect_item_app_id(item_url, name_text)
@@ -328,6 +465,12 @@ def extract_items(
                     item_img_url = f"{TRADE_ECON_IMAGE_BASE_URL}/{icon_url}/120x40"
                     item_has_image = True
 
+            # Split gold into Contraband vs ★ Rare Special Item.
+            if rarity_label == "Gold Grade":
+                rarity_label, rarity_class = classify_gold_rarity(name_text)
+
+            item_wear = wear_lookup.get((app_id, name_text), "")
+
             item = {
                 "item_dom_id": node.get("id", "") or "",
                 "item_name": name_text,
@@ -339,6 +482,9 @@ def extract_items(
                 "item_has_image": item_has_image,
                 "item_raw_classes": node.get("class", []),
                 "app_id": app_id,
+                "item_rarity": rarity_label,
+                "item_rarity_class": rarity_class,
+                "item_wear": item_wear,
             }
 
             if item["item_name"] or item["item_url"] or item["item_dom_id"]:
@@ -383,7 +529,10 @@ def classify_trade_game_scope(app_ids: List[str]) -> str:
 
 
 def parse_trade_row(
-    row: Tag, row_index: int, icon_lookup: Dict[Tuple[str, str], str]
+    row: Tag,
+    row_index: int,
+    icon_lookup: Dict[Tuple[str, str], str],
+    wear_lookup: Dict[Tuple[str, str], str],
 ) -> Dict[str, Any]:
     date_time = extract_date_time(row)
 
@@ -414,7 +563,7 @@ def parse_trade_row(
     partner_info = extract_partner_info(content)
     protection_info = extract_protection_info(content)
     direction_info = extract_direction(content)
-    items = extract_items(content, icon_lookup)
+    items = extract_items(content, icon_lookup, wear_lookup)
 
     items_count = len(items)
     is_empty_trade = items_count == 0
@@ -444,7 +593,10 @@ def parse_trade_page(html: str, input_filename: str) -> Dict[str, Any]:
     rows = main.find_all("div", class_="tradehistoryrow")
 
     icon_lookup = extract_history_inventory_icon_lookup(html)
-    parsed_rows = [parse_trade_row(row, idx, icon_lookup) for idx, row in enumerate(rows)]
+    wear_lookup = extract_history_inventory_wear_lookup(html)
+    parsed_rows = [
+        parse_trade_row(row, idx, icon_lookup, wear_lookup) for idx, row in enumerate(rows)
+    ]
 
     return {
         "source_file": input_filename,

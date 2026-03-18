@@ -124,7 +124,7 @@
         <div class="items-grid">
           {% for item in t["items"][:15] %}
             <div
-              class="item-card"
+              class="item-card rarity-{{ item.item_rarity_class if item.item_rarity_class else 'unknown' }}"
               title="{{ item.item_name if item.item_name else '' }}"
             >
               {% if item.item_img_url %}
@@ -137,11 +137,19 @@
                   {{ item.item_name }}
                 </div>
               {% endif %}
-              {% if item.item_name_color or item.item_border_color or item.item_background_color %}
-                <div class="muted" style="font-size: 12px; margin-top: 6px;">
-                  {% if item.item_name_color %}name:#{{ item.item_name_color|replace('#','') }}{% endif %}
-                  {% if item.item_border_color %} border:#{{ item.item_border_color|replace('#','') }}{% endif %}
-                  {% if item.item_background_color %} bg:#{{ item.item_background_color|replace('#','') }}{% endif %}
+              {% if item.item_rarity %}
+                <div class="muted rarity-text" style="font-size: 12px; margin-top: 6px;">
+                  rarity: {{ item.item_rarity }}
+                </div>
+              {% elif item.item_name_color or item.item_border_color or item.item_background_color %}
+                <div class="muted rarity-text" style="font-size: 12px; margin-top: 6px;">
+                  rarity: unknown
+                </div>
+              {% endif %}
+
+              {% if item.item_wear %}
+                <div class="muted" style="font-size: 12px; margin-top: 4px;">
+                  wear: {{ item.item_wear }}
                 </div>
               {% endif %}
               {% if item.item_url %}
