@@ -64,6 +64,9 @@ def load_page(page_num: int) -> Dict[str, Any]:
         if isinstance(parsed, dict):
             try:
                 refresh_needed = False
+                missing_with_appid_count = 0
+                missing_stickers_count = 0
+                missing_tf2_materials_count = 0
                 for t in parsed.get("trades") or []:
                     for it in t.get("items") or []:
                         name = it.get("item_name")
@@ -71,8 +74,19 @@ def load_page(page_num: int) -> Dict[str, Any]:
                         # parsed pages ended up without icons, re-parse.
                         if isinstance(name, str) and name.startswith("Sticker |"):
                             if not it.get("item_img_url"):
+                                missing_stickers_count += 1
                                 refresh_needed = True
                                 break
+                        # Count missing icons in general so we can show diagnostics
+                        # even for older cached parsed pages that predate our new
+                        # `diagnostics` field.
+                        if it.get("app_id") and it.get("item_name") and not it.get("item_img_url"):
+                            missing_with_appid_count += 1
+                        if (
+                            str(it.get("app_id") or "") == "440"
+                            and name in {"Refined Metal", "Scrap Metal", "Reclaimed Metal"}
+                        ):
+                            missing_tf2_materials_count += 1
                         if name in {"Refined Metal", "Scrap Metal", "Reclaimed Metal"}:
                             if not it.get("item_img_url") and not it.get("app_id"):
                                 refresh_needed = True
@@ -91,7 +105,35 @@ def load_page(page_num: int) -> Dict[str, Any]:
 
                 if refresh_needed:
                     try:
-                        return _parse_and_cache_page(page_num)
+                        old_diag = parsed.get("diagnostics") or {}
+                        new_parsed = _parse_and_cache_page(page_num)
+                        new_diag = new_parsed.get("diagnostics") or {}
+
+                        # Only flash when re-parse actually happens.
+                        old_icon = int(old_diag.get("icon_lookup_entries") or 0)
+                        new_icon = int(new_diag.get("icon_lookup_entries") or 0)
+                        old_missing = int(old_diag.get("items_missing_img_with_appid") or 0) or missing_with_appid_count
+                        new_missing = int(new_diag.get("items_missing_img_with_appid") or 0)
+
+                        # Heuristic reason.
+                        old_sticker_missing = int(old_diag.get("items_missing_img_stickers") or 0) or missing_stickers_count
+                        old_tf2_material_missing = int(old_diag.get("items_missing_img_tf2_materials") or 0) or missing_tf2_materials_count
+
+                        if old_icon == 0 and old_missing > 0:
+                            reason = "icon lookup extraction/truncation"
+                        elif old_sticker_missing > 0:
+                            reason = "lookup-key mismatch (sticker whitespace)"
+                        elif old_tf2_material_missing > 0:
+                            reason = "TF2 appid/icon reconstruction"
+                        else:
+                            reason = "unknown (icons missing)"
+
+                        flash(
+                            f"Re-parse diagnostics (page {page_num}): {reason}. "
+                            f"icon_lookup_entries {old_icon}->{new_icon}, "
+                            f"missing_icons_with_appid {old_missing}->{new_missing}."
+                        )
+                        return new_parsed
                     except FileNotFoundError:
                         # No HTML available; keep whatever parsed cache we have.
                         return parsed

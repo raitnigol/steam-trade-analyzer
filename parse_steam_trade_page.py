@@ -678,6 +678,30 @@ def parse_trade_page(html: str, input_filename: str) -> Dict[str, Any]:
         parse_trade_row(row, idx, icon_lookup, wear_lookup) for idx, row in enumerate(rows)
     ]
 
+    # Light diagnostics to help us understand why certain item icons are missing.
+    # This is written to the JSON so the Flask layer can show a short "re-parse reason" flash.
+    icon_lookup_entries = len(icon_lookup)
+    wear_lookup_entries = len(wear_lookup)
+
+    items_missing_img_with_appid = 0
+    items_missing_img_stickers = 0
+    items_missing_img_tf2_materials = 0
+
+    for tr in parsed_rows:
+        for it in tr.get("items") or []:
+            item_name = it.get("item_name") or ""
+            appid = it.get("app_id") or ""
+            item_img_url = it.get("item_img_url") or ""
+            if appid and item_name and not item_img_url:
+                items_missing_img_with_appid += 1
+                if isinstance(item_name, str) and item_name.startswith("Sticker |"):
+                    items_missing_img_stickers += 1
+                if (
+                    str(appid) == "440"
+                    and item_name in {"Refined Metal", "Scrap Metal", "Reclaimed Metal"}
+                ):
+                    items_missing_img_tf2_materials += 1
+
     return {
         "source_file": input_filename,
         "page": {
@@ -688,6 +712,13 @@ def parse_trade_page(html: str, input_filename: str) -> Dict[str, Any]:
             "trade_rows_count": len(parsed_rows),
         },
         "trades": parsed_rows,
+        "diagnostics": {
+            "icon_lookup_entries": icon_lookup_entries,
+            "wear_lookup_entries": wear_lookup_entries,
+            "items_missing_img_with_appid": items_missing_img_with_appid,
+            "items_missing_img_stickers": items_missing_img_stickers,
+            "items_missing_img_tf2_materials": items_missing_img_tf2_materials,
+        },
     }
 
 
