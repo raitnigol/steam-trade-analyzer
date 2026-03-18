@@ -84,6 +84,9 @@ def infer_app_id_from_item_name(item_name: str) -> str:
     # TF2
     if "Mann Co. Supply Crate Key" in name:
         return "440"
+    if name in {"Refined Metal", "Scrap Metal", "Reclaimed Metal"}:
+        # TF2 materials: icon reconstruction needs an appid.
+        return "440"
 
     # CS2 / CSGO-style names
     # Examples:
@@ -120,6 +123,17 @@ def infer_rarity_from_name_color(name_color: str) -> str:
         return "Covert Grade"
     if c == "#e4ae39":
         return "Gold Grade"
+    # TF2 trade-history quality colors for appid=440.
+    # Steam seems to use `name_color` as a quality hint for TF2 items.
+    # These palettes are observed from this prototype dataset.
+    if c == "#7d6d00":
+        return "TF2 Weapon"
+    if c == "#cf6a32":
+        return "TF2 Strange"
+    if c == "#476291":
+        return "TF2 Vintage"
+    if c == "#fafafa":
+        return "TF2 Special"
     return ""
 
 
@@ -147,6 +161,11 @@ def rarity_class_from_label(rarity_label: str) -> str:
         "Classified Grade": "classified",
         "Covert Grade": "covert",
         "Gold Grade": "gold",
+        "TF2 Weapon": "tf2-weapon",
+        "TF2 Metal": "tf2-metal",
+        "TF2 Strange": "tf2-strange",
+        "TF2 Vintage": "tf2-vintage",
+        "TF2 Special": "tf2-special",
     }
     return mapping.get(rarity_label, "unknown" if rarity_label else "")
 
@@ -166,12 +185,14 @@ def extract_history_inventory_icon_lookup(html: str) -> Dict[Tuple[str, str], st
     still contains per-asset `icon_url`. We build a lookup:
         (appid, item_name) -> icon_url
     """
-    m = re.search(r"var\s+g_rgHistoryInventory\s*=\s*(\{.*?\})\s*;", html, flags=re.S)
-    if not m:
-        return {}
-
     try:
-        inv = json.loads(m.group(1))
+        # Use brace-matching extraction; the previous non-greedy regex can
+        # truncate large JS objects, which breaks icon/wear lookups for some items
+        # (e.g., stickers).
+        obj_text = extract_js_object_literal(html, "g_rgHistoryInventory")
+        if not obj_text:
+            return {}
+        inv = json.loads(obj_text)
     except Exception:
         # Best-effort: if Steam changes markup and JSON parsing fails, fall back gracefully.
         return {}
@@ -191,7 +212,9 @@ def extract_history_inventory_icon_lookup(html: str) -> Dict[Tuple[str, str], st
             for _assetid, details in assets.items():
                 if not isinstance(details, dict):
                     continue
-                name = details.get("name") or ""
+                # Normalize whitespace so it matches what we parse from the DOM.
+                # Some entries use double-spaces around separators (e.g. stickers).
+                name = clean_text(details.get("name") or "")
                 icon_url = details.get("icon_url") or ""
                 if not name or not icon_url:
                     continue
@@ -214,12 +237,11 @@ def extract_history_inventory_wear_lookup(html: str) -> Dict[Tuple[str, str], st
     Returns a lookup:
       (appid, item_name) -> wear_label
     """
-    m = re.search(r"var\s+g_rgHistoryInventory\s*=\s*(\{.*?\})\s*;", html, flags=re.S)
-    if not m:
-        return {}
-
     try:
-        inv = json.loads(m.group(1))
+        obj_text = extract_js_object_literal(html, "g_rgHistoryInventory")
+        if not obj_text:
+            return {}
+        inv = json.loads(obj_text)
     except Exception:
         return {}
 
@@ -246,7 +268,7 @@ def extract_history_inventory_wear_lookup(html: str) -> Dict[Tuple[str, str], st
                 if not isinstance(details, dict):
                     continue
 
-                item_name = details.get("name") or ""
+                item_name = clean_text(details.get("name") or "")
                 if not item_name:
                     continue
 
@@ -279,6 +301,55 @@ def extract_history_inventory_wear_lookup(html: str) -> Dict[Tuple[str, str], st
                     wear_lookup[(appid_s, str(item_name))] = wear_label
 
     return wear_lookup
+
+
+def extract_js_object_literal(html: str, var_name: str) -> str:
+    """
+    Extract a JS object literal assigned to `var <var_name> = {...};`
+    using brace matching instead of fragile regex.
+
+    Returns the `{...}` substring (suitable for `json.loads` when the object is JSON-compatible).
+    """
+    # Find `var <var_name> =`
+    m = re.search(rf"var\s+{re.escape(var_name)}\s*=\s*", html)
+    if not m:
+        return ""
+
+    start_idx = html.find("{", m.end())
+    if start_idx < 0:
+        return ""
+
+    depth = 0
+    in_quote: str | None = None
+    escape = False
+
+    for i in range(start_idx, len(html)):
+        ch = html[i]
+
+        if in_quote is not None:
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == in_quote:
+                in_quote = None
+            continue
+
+        # Not inside a quoted string
+        if ch in ("'", '"', "`"):
+            in_quote = ch
+            continue
+
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return html[start_idx : i + 1]
+
+    return ""
 
 
 def find_main_contents(soup: BeautifulSoup) -> Tag:
@@ -468,6 +539,15 @@ def extract_items(
             # Split gold into Contraband vs ★ Rare Special Item.
             if rarity_label == "Gold Grade":
                 rarity_label, rarity_class = classify_gold_rarity(name_text)
+
+            # Override TF2 material bucket: these are common crafting components
+            # and should not inherit the generic TF2 weapon color.
+            if app_id and str(app_id) == "440" and name_text in {
+                "Refined Metal",
+                "Scrap Metal",
+                "Reclaimed Metal",
+            }:
+                rarity_label, rarity_class = "TF2 Metal", "tf2-metal"
 
             item_wear = wear_lookup.get((app_id, name_text), "")
 

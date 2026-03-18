@@ -122,10 +122,11 @@
       }
 
       .items-grid {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
         gap: 10px;
         margin-top: 10px;
+        align-items: start;
       }
 
       .item-card {
@@ -133,7 +134,7 @@
         background: #0f172a;
         border-radius: 12px;
         padding: 8px 10px;
-        min-width: 160px;
+        min-width: 0;
       }
 
       /* Item rarity colors (best-effort palette match) */
@@ -197,6 +198,42 @@
         color: #94a3b8;
       }
 
+      /* TF2 material palette (best-effort) */
+      .item-card.rarity-tf2-metal {
+        border-color: #7d6d00;
+      }
+      .item-card.rarity-tf2-metal .item-name {
+        color: #7d6d00;
+      }
+
+      .item-card.rarity-tf2-weapon {
+        border-color: #7d6d00;
+      }
+      .item-card.rarity-tf2-weapon .item-name {
+        color: #7d6d00;
+      }
+
+      .item-card.rarity-tf2-strange {
+        border-color: #cf6a32;
+      }
+      .item-card.rarity-tf2-strange .item-name {
+        color: #cf6a32;
+      }
+
+      .item-card.rarity-tf2-vintage {
+        border-color: #476291;
+      }
+      .item-card.rarity-tf2-vintage .item-name {
+        color: #476291;
+      }
+
+      .item-card.rarity-tf2-special {
+        border-color: #fafafa;
+      }
+      .item-card.rarity-tf2-special .item-name {
+        color: #fafafa;
+      }
+
       .item-card .rarity-text {
         color: inherit;
       }
@@ -232,6 +269,7 @@
         font-size: 13px;
         line-height: 1.25;
         word-break: break-word;
+        overflow-wrap: anywhere;
       }
 
       .item-link {

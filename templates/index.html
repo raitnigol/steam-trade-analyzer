@@ -145,8 +145,11 @@
                 class="partner-avatar"
                 src="{{ url_for('steam_avatar', profile_path=t.partner_avatar_profile_path or t.partner_steamid64) }}"
                 alt="{{ t.partner_name }}"
-                onload="document.getElementById('avatar-ph-{{ t.trade_row_index }}').style.display='none';"
-                onerror="document.getElementById('avatar-ph-{{ t.trade_row_index }}').style.display='flex'; this.style.display='none';"
+                style="opacity: 0;"
+                loading="lazy"
+                decoding="async"
+                onload="document.getElementById('avatar-ph-{{ t.trade_row_index }}').style.display='none'; this.style.opacity='1';"
+                onerror="document.getElementById('avatar-ph-{{ t.trade_row_index }}').style.display='flex'; this.style.opacity='0';"
               />
 
               {% if t.partner_url %}

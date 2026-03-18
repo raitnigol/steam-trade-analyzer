@@ -53,7 +53,53 @@ def _parse_and_cache_page(page_num: int) -> Dict[str, Any]:
 def load_page(page_num: int) -> Dict[str, Any]:
     parsed_path = _parsed_path(page_num)
     if parsed_path.is_file() and parsed_path.stat().st_size > 0:
-        return json.loads(parsed_path.read_text(encoding="utf-8"))
+        try:
+            parsed = json.loads(parsed_path.read_text(encoding="utf-8"))
+        except Exception:
+            parsed = None
+
+        # Auto-refresh: older cached parsed pages might have missing TF2 material
+        # icon reconstruction (when app_id couldn't be inferred from item_url).
+        # If we detect likely stale entries, re-parse from HTML (if present).
+        if isinstance(parsed, dict):
+            try:
+                refresh_needed = False
+                for t in parsed.get("trades") or []:
+                    for it in t.get("items") or []:
+                        name = it.get("item_name")
+                        # Stickers sometimes require JS icon lookup; if cached
+                        # parsed pages ended up without icons, re-parse.
+                        if isinstance(name, str) and name.startswith("Sticker |"):
+                            if not it.get("item_img_url"):
+                                refresh_needed = True
+                                break
+                        if name in {"Refined Metal", "Scrap Metal", "Reclaimed Metal"}:
+                            if not it.get("item_img_url") and not it.get("app_id"):
+                                refresh_needed = True
+                                break
+                        # Old cache might have over-applied "TF2 Metal" to all
+                        # `#7d6d00`-colored TF2 items. If we see that, re-parse.
+                        if it.get("item_rarity") == "TF2 Metal" and name not in {
+                            "Refined Metal",
+                            "Scrap Metal",
+                            "Reclaimed Metal",
+                        }:
+                            refresh_needed = True
+                            break
+                    if refresh_needed:
+                        break
+
+                if refresh_needed:
+                    try:
+                        return _parse_and_cache_page(page_num)
+                    except FileNotFoundError:
+                        # No HTML available; keep whatever parsed cache we have.
+                        return parsed
+            except Exception:
+                # Best-effort only; fall back to cached parsed data.
+                pass
+            return parsed
+
     return _parse_and_cache_page(page_num)
 
 
