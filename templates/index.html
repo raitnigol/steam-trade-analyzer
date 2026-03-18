@@ -6,6 +6,38 @@
     <div class="error">{{ error }}</div>
   {% endif %}
 
+  {% if notice %}
+    <div class="muted">{{ notice }}</div>
+  {% endif %}
+
+  {% if first_page_num and last_page_num and (first_page_num != last_page_num) %}
+    <div class="paginator">
+      {% if prev_page_num %}
+        <a
+          class="paginator-btn"
+          href="{{ url_for('index', page=prev_page_num, q=q, direction=direction, app_id=app_id) }}"
+        >
+          &lt; Prev
+        </a>
+      {% else %}
+        <a class="paginator-btn disabled">&lt; Prev</a>
+      {% endif %}
+      <div class="paginator-meta">
+        Page {{ page_num }} of {{ last_page_num }}
+      </div>
+      {% if next_page_num %}
+        <a
+          class="paginator-btn"
+          href="{{ url_for('index', page=next_page_num, q=q, direction=direction, app_id=app_id) }}"
+        >
+          Next &gt;
+        </a>
+      {% else %}
+        <a class="paginator-btn disabled">Next &gt;</a>
+      {% endif %}
+    </div>
+  {% endif %}
+
   {% if protected_trades_count and protected_trades_count > 0 and page_num == 1 %}
     <div class="flash steam-protected-flash">
       You have {{ protected_trades_count }} recent trades with protected items.
@@ -60,9 +92,13 @@
   </div>
 
   <div class="row" style="margin-bottom: 12px;">
-    <form method="post" action="{{ url_for('parse_page', page_num=page_num) }}">
-      <button class="secondary" type="submit">Parse page {{ page_num }} from HTML</button>
-    </form>
+    {% if has_html_page %}
+      <form method="post" action="{{ url_for('parse_page', page_num=page_num) }}">
+        <button class="secondary" type="submit">Parse page {{ page_num }} from HTML</button>
+      </form>
+    {% else %}
+      <div class="muted">No saved HTML for page {{ page_num }} (can't parse).</div>
+    {% endif %}
   </div>
 
   <p class="muted">
@@ -138,10 +174,11 @@
 
       {% if t["items"] %}
         <div class="items-grid">
-          {% for item in t["items"][:15] %}
+          {% for item in t["items"] %}
             <div
-              class="item-card rarity-{{ item.item_rarity_class if item.item_rarity_class else 'unknown' }}"
+              class="item-card rarity-{{ item.item_rarity_class if item.item_rarity_class else 'unknown' }}{% if loop.index0 >= 15 %} items-hidden-{{ t.trade_row_index }}{% endif %}"
               title="{{ item.item_name if item.item_name else '' }}"
+              {% if loop.index0 >= 15 %}style="display:none"{% endif %}
             >
               {% if item.item_img_url %}
                 <img class="item-img" src="{{ item.item_img_url }}" alt="{{ item.item_name if item.item_name else 'item' }}" />
@@ -173,8 +210,16 @@
           {% endfor %}
         </div>
         {% if t["items"]|length > 15 %}
-          <div class="muted" style="margin-top: 8px;">
-            ... ({{ t["items"]|length - 15 }} more)
+          <div style="margin-top: 10px;">
+            <button
+              class="secondary toggle-items-btn"
+              id="toggle-items-btn-{{ t.trade_row_index }}"
+              type="button"
+              data-total="{{ t["items"]|length }}"
+              onclick="toggleItems('{{ t.trade_row_index }}', this)"
+            >
+              Show all items ({{ t["items"]|length }})
+            </button>
           </div>
         {% endif %}
       {% else %}

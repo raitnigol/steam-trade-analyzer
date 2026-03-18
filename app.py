@@ -143,10 +143,56 @@ def index() -> str:
     direction = (request.args.get("direction") or "").strip()
     app_id = (request.args.get("app_id") or "").strip()
 
-    parsed = None
+    def _page_nums_from_glob(pattern: str) -> set[int]:
+        nums: set[int] = set()
+        for p in ROOT_DIR.glob(pattern):
+            name = p.name
+            m = re.search(r"page-(\d+)\.", name)
+            if not m:
+                continue
+            try:
+                nums.add(int(m.group(1)))
+            except Exception:
+                continue
+        return nums
+
+    html_pages = _page_nums_from_glob("steam-trade-html/page-*.html")
+    parsed_pages = _page_nums_from_glob("page-*.parsed.json")
+    available_pages = sorted(html_pages | parsed_pages)
+
+    first_page_num = available_pages[0] if available_pages else None
+    last_page_num = available_pages[-1] if available_pages else None
+
     error: str | None = None
+    notice: str | None = None
+    if available_pages and page_num not in available_pages:
+        # Prevent "dead-end" pages (e.g. user requests page N with no HTML/parsed cache).
+        # We clamp to the nearest available page so the UI stays functional.
+        clamped_page_num = (
+            max((p for p in available_pages if p < page_num), default=None)
+            or min((p for p in available_pages if p > page_num), default=None)
+            or first_page_num
+        )
+        notice = (
+            f"Requested page {page_num} isn't available yet. "
+            f"Showing page {clamped_page_num} instead."
+        )
+        page_num = clamped_page_num
+
+    has_html_page = page_num in html_pages
+    has_parsed_page = page_num in parsed_pages
+
+    prev_page_num = max((p for p in available_pages if p < page_num), default=None)
+    next_page_num = min((p for p in available_pages if p > page_num), default=None)
+
+    parsed = None
 
     try:
+        # Prefer showing parsed data even if HTML is missing; only error when both are missing.
+        if not has_parsed_page and not has_html_page:
+            raise FileNotFoundError(
+                f"Missing HTML page: {HTML_DIR / f'page-{page_num}.html'}"
+            )
         parsed = load_page(page_num)
     except FileNotFoundError as e:
         error = str(e)
@@ -189,11 +235,17 @@ def index() -> str:
         direction=direction,
         app_id=app_id,
         error=error,
+        notice=notice,
         summary_text=page_meta.get("summary_text", ""),
         cursor_href=page_meta.get("cursor_href"),
         all_app_ids=sorted(all_app_ids),
         protected_trades_count=protection_stats.get("protected_trades_count", 0),
         protection_help_url="https://help.steampowered.com/wizard/HelpTradeRestore",
+        prev_page_num=prev_page_num,
+        next_page_num=next_page_num,
+        first_page_num=first_page_num,
+        last_page_num=last_page_num,
+        has_html_page=has_html_page,
     )
 
 

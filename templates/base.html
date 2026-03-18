@@ -337,6 +337,37 @@
         border-radius: 8px;
         margin-bottom: 12px;
       }
+
+      .paginator {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin: 12px 0;
+        flex-wrap: wrap;
+      }
+
+      .paginator-meta {
+        color: #94a3b8;
+      }
+
+      .paginator-btn {
+        text-decoration: none;
+        border: 1px solid #334155;
+        background: #111827;
+        color: #e8e8e8;
+        padding: 8px 12px;
+        border-radius: 10px;
+      }
+
+      .paginator-btn.disabled {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+
+      .toggle-items-btn {
+        margin-top: 6px;
+      }
     </style>
   </head>
   <body>
@@ -351,6 +382,24 @@
       {% endwith %}
       {% block content %}{% endblock %}
     </div>
+
+    <script>
+      function toggleItems(tradeRowIndex, btn) {
+        const hiddenItems = document.querySelectorAll(".items-hidden-" + tradeRowIndex);
+        if (!hiddenItems || hiddenItems.length === 0) return;
+
+        const isHidden = hiddenItems[0].style.display === "none";
+
+        hiddenItems.forEach((el) => {
+          el.style.display = isHidden ? "" : "none";
+        });
+
+        if (btn) {
+          const total = btn.getAttribute("data-total") || "";
+          btn.textContent = isHidden ? "Show less" : "Show all items (" + total + ")";
+        }
+      }
+    </script>
   </body>
 </html>
 
