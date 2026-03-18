@@ -168,9 +168,7 @@
                   wear: {{ item.item_wear }}
                 </div>
               {% endif %}
-              {% if item.item_url %}
-                <a class="item-link muted" href="{{ item.item_url }}" target="_blank" rel="noreferrer">[link]</a>
-              {% endif %}
+              {# Disabled temporarily: deep inventory links often fail to select assets after they move. #}
             </div>
           {% endfor %}
         </div>
